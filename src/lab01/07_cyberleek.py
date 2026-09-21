@@ -1,4 +1,4 @@
-string = input()
+string = input(f'in: ')
 result = ''
 
 for i in range(len(string)):
@@ -14,4 +14,4 @@ for i in range(len(string)):
 for i in range(first_index,len(string),step):
     result += string[i]
 
-print(result)
+print(f'out: {result}')
