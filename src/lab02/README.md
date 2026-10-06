@@ -111,10 +111,10 @@ def flatten(mat: list[list | tuple]) -> list:
 
 ## Задание B. matrix.py
 
-### _check_rectangular
+### check_rectangular
 
 ```python
-def _check_rectangular(mat: list[list[float | int]]) -> None:
+def check_rectangular(mat: list[list[float | int]]) -> None:
     """Проверяет, что все строки матрицы одинаковой длины
 
     Ошибки:
@@ -144,7 +144,7 @@ def transpose(mat: list[list[float | int]]) -> list[list]:
 
     if not mat:
         return []
-    _check_rectangular(mat)
+    check_rectangular(mat)
     res = []
     for j in range(len(mat[0])):
         col = []
@@ -185,7 +185,7 @@ def row_sums(mat: list[list[float | int]]) -> list[float]:
 
     if not mat:
         raise ValueError('Пустая матрица')
-    _check_rectangular(mat)
+    check_rectangular(mat)
     res = []
     for row in mat:
         total = 0
@@ -226,7 +226,7 @@ def col_sums(mat: list[list[float | int]]) -> list[float]:
 
     if not mat:
         raise ValueError('Пустая матрица')
-    _check_rectangular(mat)
+    check_rectangular(mat)
     res = []
     for j in range(len(mat[0])):
         total = 0
