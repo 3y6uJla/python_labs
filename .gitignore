@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Временные файлы Excel
+~$*.xlsx
+
+# Результаты проверки ЛР4
+data/lab04/check*.csv

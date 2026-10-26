@@ -1,0 +1,7 @@
+[
+  {"name": "Анна", "age": 19, "city": "Москва", "email": "anna@mail.ru"},
+  {"name": "Иван", "age": 20, "city": "Санкт-Петербург", "email": "ivan@yandex.ru"},
+  {"name": "Мария", "age": 18, "city": "Казань", "email": "maria@gmail.com"},
+  {"name": "Дмитрий", "age": 21, "city": "Новосибирск", "email": "dima@mail.ru"},
+  {"name": "Елена", "age": 19, "city": "Екатеринбург", "email": "lena@yandex.ru"}
+]
