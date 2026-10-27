@@ -1,9 +1,16 @@
 # Лабораторная работа 5
 
+Цель: разобраться с форматом JSON, сериализацией/десериализацией и табличными конвертациями.
+
+## Подготовка
+
+Для конвертации в XLSX используется библиотека `openpyxl`, она указана в `requirements.txt`. Остальной код использует только стандартную библиотеку (`json`, `csv`, `pathlib`).
 
 ```bash
 pip install -r requirements.txt
 ```
+
+Все команды запускаются из корня репозитория `python_labs` через `python -m`. Так пути к файлам (`data/...`) считаются от корня, а импорты ищутся от корня, потому что в `sys.path[0]` попадает текущая папка. В папках `src`, `src/lib`, `src/lab04` и `src/lab05` лежат пустые `__init__.py`, они делают эти папки пакетами.
 
 ## Задание A - JSON и CSV `src/lab05/json_csv.py`
 
@@ -65,15 +72,14 @@ def check_out_file(path: str | Path, suffix: str) -> Path:
 
 Функция читает JSON-файл, который должен быть списком словарей, и записывает его в CSV через `csv.DictWriter`.
 
-Порядок колонок как в первом объекте. Если в следующих объектах встречаются новые ключи, они добавляются в конец в порядке появления. Если у объекта нет какого-то поля, в CSV на этом месте записывается пустая строка (`restval=''`).
+Порядок колонок - как в первом объекте. Если у объекта нет какого-то поля, в CSV на этом месте записывается пустая строка (`restval=''`). Если у объекта есть поле, которого нет в первом объекте, функция вызывает `ValueError`, чтобы данные не потерялись молча. Список или словарь внутри значения тоже вызывает `ValueError`, потому что в одну ячейку CSV они не помещаются.
 
 ```python
 def json_to_csv(json_path: str, csv_path: str) -> None:
     """Функция преобразует JSON-файл в CSV
 
     JSON должен быть списком словарей [{...}, {...}]. Порядок колонок - как в первом
-    объекте, ключи, которых нет в первом объекте, добавляются в конец в порядке появления.
-    Отсутствующие поля заполняются пустой строкой.
+    объекте. Если у объекта нет какого-то поля, оно заполняется пустой строкой.
 
     Аргументы:
         json_path: путь к входному JSON-файлу
@@ -84,18 +90,24 @@ def json_to_csv(json_path: str, csv_path: str) -> None:
 
     Ошибки:
         FileNotFoundError: если JSON-файла нет
-        ValueError: неверный тип файла, пустой или некорректный JSON,
-            не список или в списке есть не словари
+        ValueError: неверный тип файла, пустой или битый JSON, не список или в списке
+            есть не словари, у объекта есть поле, которого нет в первом объекте,
+            в значении лежит список или словарь (в одну ячейку CSV не влезает)
     """
 
     json_file = check_file(json_path, '.json')
     csv_file = check_out_file(csv_path, '.csv')
 
     with open(json_file, 'r', encoding='utf-8') as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            raise ValueError(f'Файл {json_file.name} не является корректным JSON')
+        text = f.read()
+
+    if text.strip() == '':
+        raise ValueError('Пустой JSON или неподдерживаемая структура')
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f'Битый JSON в файле {json_file.name}: {e.msg}, строка {e.lineno}')
 
     if not isinstance(data, list) or len(data) == 0:
         raise ValueError('Пустой JSON или неподдерживаемая структура')
@@ -104,11 +116,17 @@ def json_to_csv(json_path: str, csv_path: str) -> None:
         if not isinstance(item, dict):
             raise ValueError(f'В JSON есть элемент, который не является словарём: {item!r}')
 
-    fieldnames = []
-    for item in data:
-        for key in item:
+    fieldnames = list(data[0].keys())
+    if len(fieldnames) == 0:
+        raise ValueError('Первый объект в JSON пустой, колонок нет')
+
+    for i, item in enumerate(data, start=1):
+        for key, value in item.items():
             if key not in fieldnames:
-                fieldnames.append(key)
+                raise ValueError(f'В объекте {i} есть поле "{key}", которого нет в первом объекте')
+            if isinstance(value, (list, dict)):
+                raise ValueError(f'В объекте {i} в поле "{key}" лежит список или словарь, '
+                                 f'а в ячейку CSV помещается только одно значение')
 
     with open(csv_file, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, restval='')
@@ -118,7 +136,7 @@ def json_to_csv(json_path: str, csv_path: str) -> None:
 
 ### 3. Функция `csv_to_json`
 
-Функция читает CSV через `csv.DictReader`, каждая строка превращается в словарь, где ключи это названия колонок из заголовка. Все значения сохраняются как строки, потому что CSV не хранит типы данных. Запись выполняется через `json.dump(..., ensure_ascii=False, indent=2)`, поэтому русские буквы в JSON остаются читаемыми.
+Функция читает CSV через `csv.DictReader`, каждая строка превращается в словарь, где ключи - названия колонок из заголовка. Все значения сохраняются как строки, потому что CSV не хранит типы данных. Запись выполняется через `json.dump(..., ensure_ascii=False, indent=2)`, поэтому русские буквы в JSON остаются читаемыми.
 
 ```python
 def csv_to_json(csv_path: str, json_path: str) -> None:
@@ -174,9 +192,11 @@ def csv_to_json(csv_path: str, json_path: str) -> None:
 |---|---|
 | Файла нет | `FileNotFoundError` |
 | Неверное расширение файла (например, `.csv` вместо `.json`) | `ValueError` |
-| JSON не читается (синтаксическая ошибка) | `ValueError` |
-| Пустой JSON `[]` или JSON не является списком | `ValueError("Пустой JSON или неподдерживаемая структура")` |
+| Пустой файл `.json` или пустой список `[]`, или JSON не является списком | `ValueError("Пустой JSON или неподдерживаемая структура")` |
+| Битый JSON (например, лишняя запятая) | `ValueError` с текстом ошибки и номером строки |
 | В списке JSON есть элементы, которые не являются словарями | `ValueError` |
+| В объекте есть поле, которого нет в первом объекте | `ValueError` |
+| В значении лежит список или словарь | `ValueError` |
 | Пустой CSV или CSV без заголовка | `ValueError` |
 | В заголовке CSV пустая или повторяющаяся колонка | `ValueError` |
 | В CSV только заголовок, без строк с данными | `ValueError` |
@@ -185,11 +205,11 @@ def csv_to_json(csv_path: str, json_path: str) -> None:
 ### 5. Проверка модуля
 
 ```python
-if __name__ == '__main__':
+def main() -> None:
     json_to_csv('data/samples/people.json', 'data/out/people_from_json.csv')
     with open('data/samples/people.json', encoding='utf-8') as f:
         people = json.load(f)
-    with open('data/out/people_from_json.csv', encoding='utf-8') as f:
+    with open('data/out/people_from_json.csv', encoding='utf-8', newline='') as f:
         csv_rows = list(csv.DictReader(f))
         header = list(csv_rows[0].keys())
     print('json_to_csv("data/samples/people.json", "data/out/people_from_json.csv")')
@@ -197,7 +217,7 @@ if __name__ == '__main__':
     print(f'  объектов в JSON: {len(people)}, строк в CSV: {len(csv_rows)}')
 
     csv_to_json('data/samples/people.csv', 'data/out/people_from_csv.json')
-    with open('data/samples/people.csv', encoding='utf-8') as f:
+    with open('data/samples/people.csv', encoding='utf-8', newline='') as f:
         csv_rows = list(csv.DictReader(f))
     with open('data/out/people_from_csv.json', encoding='utf-8') as f:
         people = json.load(f)
@@ -207,13 +227,15 @@ if __name__ == '__main__':
 
     json_to_csv('data/samples/students.json', 'data/out/students_from_json.csv')
     print('\njson_to_csv("data/samples/students.json", "data/out/students_from_json.csv")')
-    with open('data/out/students_from_json.csv', encoding='utf-8') as f:
+    with open('data/out/students_from_json.csv', encoding='utf-8', newline='') as f:
         print(f.read().strip())
 
     print('\nПроверка ошибок:')
     bad_calls = [
         ('json_to_csv', 'data/samples/empty.json'),
+        ('json_to_csv', 'data/samples/broken.json'),
         ('json_to_csv', 'data/samples/not_dicts.json'),
+        ('json_to_csv', 'data/samples/extra_keys.json'),
         ('json_to_csv', 'data/samples/people.csv'),
         ('json_to_csv', 'data/samples/nofile.json'),
         ('csv_to_json', 'data/samples/empty.csv'),
@@ -227,10 +249,14 @@ if __name__ == '__main__':
                 csv_to_json(path, 'data/out/bad.json')
         except (ValueError, FileNotFoundError) as e:
             print(f'{func_name}("{path}", ...) -> {type(e).__name__}: {e}')
+
+
+if __name__ == '__main__':
+    main()
 ```
 
 ```bash
-python src/lab05/json_csv.py
+python -m src.lab05.json_csv
 ```
 
 ![Проверка модуля json_csv](../../images/lab05/img01.png)
@@ -329,7 +355,7 @@ def csv_to_xlsx(csv_path: str, xlsx_path: str) -> None:
 ### Проверка модуля
 
 ```python
-if __name__ == '__main__':
+def main() -> None:
     from openpyxl import load_workbook
 
     for src, dst in [('data/samples/people.csv', 'data/out/people.xlsx'),
@@ -351,10 +377,14 @@ if __name__ == '__main__':
             csv_to_xlsx(path, 'data/out/bad.xlsx')
         except (ValueError, FileNotFoundError) as e:
             print(f'csv_to_xlsx("{path}", ...) -> {type(e).__name__}: {e}')
+
+
+if __name__ == '__main__':
+    main()
 ```
 
 ```bash
-python src/lab05/csv_xlsx.py
+python -m src.lab05.csv_xlsx
 ```
 
 ![Проверка модуля csv_xlsx](../../images/lab05/img02.png)
@@ -390,28 +420,28 @@ name,age,city,email
 
 Заголовок CSV совпадает с ключами объектов: `name,age,city,email`. В JSON 5 объектов, в CSV 5 строк с данными (без заголовка).
 
-### Сценарий 2. JSON с разными полями
+### Сценарий 2. JSON с пропущенными полями
 
-Собственный пример `data/samples/students.json`, где у объектов разный набор ключей:
+Собственный пример `data/samples/students.json`, где у некоторых объектов нет части полей:
 
 ```json
 [
   {"name": "Олег", "group": "БИВТ-26-6", "score": 87},
   {"name": "Светлана", "group": "БИВТ-26-6"},
-  {"name": "Павел", "score": 92, "phone": "+79001234567"}
+  {"name": "Павел", "score": 92}
 ]
 ```
 
 Результат `data/out/students_from_json.csv`:
 
 ```csv
-name,group,score,phone
-Олег,БИВТ-26-6,87,
-Светлана,БИВТ-26-6,,
-Павел,,92,+79001234567
+name,group,score
+Олег,БИВТ-26-6,87
+Светлана,БИВТ-26-6,
+Павел,,92
 ```
 
-Колонки `name`, `group`, `score` взяты из первого объекта, колонка `phone` появилась только в третьем объекте и добавилась в конец. Отсутствующие значения заполнены пустой строкой.
+Колонки взяты из первого объекта. У Светланы нет поля `score`, а у Павла нет поля `group`, поэтому в этих ячейках пустые строки.
 
 ### Сценарий 3. CSV в JSON
 
@@ -451,7 +481,7 @@ name,age,city,email
 ### Сценарий 4. CSV в XLSX
 
 ```bash
-python src/lab05/csv_xlsx.py
+python -m src.lab05.csv_xlsx
 ```
 
 Из `data/samples/people.csv` получается `data/out/people.xlsx`, из `data/samples/cities.csv` - `data/out/cities.xlsx`. Файлы открываются в Excel, лист называется `Sheet1`, ширина колонок подобрана по длине текста.
@@ -469,7 +499,18 @@ python src/lab05/csv_xlsx.py
 | Файл | Что проверяет |
 |---|---|
 | `data/samples/empty.json` | пустой список `[]` |
+| `data/samples/broken.json` | битый JSON, лишняя запятая в конце списка |
 | `data/samples/not_dicts.json` | в списке есть строка и число вместо словарей |
+| `data/samples/extra_keys.json` | у второго объекта есть поле, которого нет в первом |
 | `data/samples/empty.csv` | полностью пустой CSV |
 | `data/samples/only_header.csv` | CSV только с заголовком |
 | `data/samples/bad_rows.csv` | строка с меньшим количеством значений |
+
+## Допущения
+
+- Кодировка всех файлов - UTF-8.
+- Разделитель в CSV - запятая.
+- JSON должен быть списком плоских словарей, вложенные списки и словари не поддерживаются.
+- Порядок колонок при конвертации JSON в CSV - как в первом объекте.
+- При конвертации CSV в JSON все значения остаются строками, типы не приводятся.
+- В XLSX все значения записываются как текст, так как в CSV типов нет.

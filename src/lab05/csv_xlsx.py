@@ -71,7 +71,7 @@ def csv_to_xlsx(csv_path: str, xlsx_path: str) -> None:
     wb.save(xlsx_file)
 
 
-if __name__ == '__main__':
+def main() -> None:
     from openpyxl import load_workbook
 
     for src, dst in [('data/samples/people.csv', 'data/out/people.xlsx'),
@@ -93,3 +93,7 @@ if __name__ == '__main__':
             csv_to_xlsx(path, 'data/out/bad.xlsx')
         except (ValueError, FileNotFoundError) as e:
             print(f'csv_to_xlsx("{path}", ...) -> {type(e).__name__}: {e}')
+
+
+if __name__ == '__main__':
+    main()

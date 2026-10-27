@@ -51,8 +51,7 @@ def json_to_csv(json_path: str, csv_path: str) -> None:
     """Функция преобразует JSON-файл в CSV
 
     JSON должен быть списком словарей [{...}, {...}]. Порядок колонок - как в первом
-    объекте, ключи, которых нет в первом объекте, добавляются в конец в порядке появления.
-    Отсутствующие поля заполняются пустой строкой.
+    объекте. Если у объекта нет какого-то поля, оно заполняется пустой строкой.
 
     Аргументы:
         json_path: путь к входному JSON-файлу
@@ -63,18 +62,24 @@ def json_to_csv(json_path: str, csv_path: str) -> None:
 
     Ошибки:
         FileNotFoundError: если JSON-файла нет
-        ValueError: неверный тип файла, пустой или некорректный JSON,
-            не список или в списке есть не словари
+        ValueError: неверный тип файла, пустой или битый JSON, не список или в списке
+            есть не словари, у объекта есть поле, которого нет в первом объекте,
+            в значении лежит список или словарь (в одну ячейку CSV не влезает)
     """
 
     json_file = check_file(json_path, '.json')
     csv_file = check_out_file(csv_path, '.csv')
 
     with open(json_file, 'r', encoding='utf-8') as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            raise ValueError(f'Файл {json_file.name} не является корректным JSON')
+        text = f.read()
+
+    if text.strip() == '':
+        raise ValueError('Пустой JSON или неподдерживаемая структура')
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f'Битый JSON в файле {json_file.name}: {e.msg}, строка {e.lineno}')
 
     if not isinstance(data, list) or len(data) == 0:
         raise ValueError('Пустой JSON или неподдерживаемая структура')
@@ -83,11 +88,17 @@ def json_to_csv(json_path: str, csv_path: str) -> None:
         if not isinstance(item, dict):
             raise ValueError(f'В JSON есть элемент, который не является словарём: {item!r}')
 
-    fieldnames = []
-    for item in data:
-        for key in item:
+    fieldnames = list(data[0].keys())
+    if len(fieldnames) == 0:
+        raise ValueError('Первый объект в JSON пустой, колонок нет')
+
+    for i, item in enumerate(data, start=1):
+        for key, value in item.items():
             if key not in fieldnames:
-                fieldnames.append(key)
+                raise ValueError(f'В объекте {i} есть поле "{key}", которого нет в первом объекте')
+            if isinstance(value, (list, dict)):
+                raise ValueError(f'В объекте {i} в поле "{key}" лежит список или словарь, '
+                                 f'а в ячейку CSV помещается только одно значение')
 
     with open(csv_file, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, restval='')
@@ -142,11 +153,11 @@ def csv_to_json(csv_path: str, json_path: str) -> None:
         json.dump(rows, f, ensure_ascii=False, indent=2)
 
 
-if __name__ == '__main__':
+def main() -> None:
     json_to_csv('data/samples/people.json', 'data/out/people_from_json.csv')
     with open('data/samples/people.json', encoding='utf-8') as f:
         people = json.load(f)
-    with open('data/out/people_from_json.csv', encoding='utf-8') as f:
+    with open('data/out/people_from_json.csv', encoding='utf-8', newline='') as f:
         csv_rows = list(csv.DictReader(f))
         header = list(csv_rows[0].keys())
     print('json_to_csv("data/samples/people.json", "data/out/people_from_json.csv")')
@@ -154,7 +165,7 @@ if __name__ == '__main__':
     print(f'  объектов в JSON: {len(people)}, строк в CSV: {len(csv_rows)}')
 
     csv_to_json('data/samples/people.csv', 'data/out/people_from_csv.json')
-    with open('data/samples/people.csv', encoding='utf-8') as f:
+    with open('data/samples/people.csv', encoding='utf-8', newline='') as f:
         csv_rows = list(csv.DictReader(f))
     with open('data/out/people_from_csv.json', encoding='utf-8') as f:
         people = json.load(f)
@@ -164,13 +175,15 @@ if __name__ == '__main__':
 
     json_to_csv('data/samples/students.json', 'data/out/students_from_json.csv')
     print('\njson_to_csv("data/samples/students.json", "data/out/students_from_json.csv")')
-    with open('data/out/students_from_json.csv', encoding='utf-8') as f:
+    with open('data/out/students_from_json.csv', encoding='utf-8', newline='') as f:
         print(f.read().strip())
 
     print('\nПроверка ошибок:')
     bad_calls = [
         ('json_to_csv', 'data/samples/empty.json'),
+        ('json_to_csv', 'data/samples/broken.json'),
         ('json_to_csv', 'data/samples/not_dicts.json'),
+        ('json_to_csv', 'data/samples/extra_keys.json'),
         ('json_to_csv', 'data/samples/people.csv'),
         ('json_to_csv', 'data/samples/nofile.json'),
         ('csv_to_json', 'data/samples/empty.csv'),
@@ -184,3 +197,7 @@ if __name__ == '__main__':
                 csv_to_json(path, 'data/out/bad.json')
         except (ValueError, FileNotFoundError) as e:
             print(f'{func_name}("{path}", ...) -> {type(e).__name__}: {e}')
+
+
+if __name__ == '__main__':
+    main()
